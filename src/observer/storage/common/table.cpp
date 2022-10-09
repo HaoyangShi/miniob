@@ -50,7 +50,42 @@ Table::~Table()
   LOG_INFO("Table has been closed: %s", name());
 }
 
-RC Table::create(
+RC Table::drop()
+{
+        LOG_INFO("begin drop table %s",name());
+        // 先刷脏页
+        RC rc=sync();
+
+        // 删除 .table文件
+        std::string table_path= table_meta_file(base_dir_.c_str(),name());
+        if(remove(table_path.c_str())!=0){
+          LOG_ERROR("failed to remove table file %s",table_path.c_str());
+          rc = RC::GENERIC_ERROR;
+          return rc;
+        }
+
+        // 删除 .data文件
+        std::string data_path= table_data_file(base_dir_.c_str(),name());
+        if(remove(data_path.c_str())!=0){
+          LOG_ERROR("failed to remove data file %s", data_path.c_str());
+          rc = RC::GENERIC_ERROR;
+          return rc;
+        }
+
+        // 删除 index文件
+        int index_num = table_meta_.index_num();
+        for (int i=0;i<index_num;i++){
+          std::string index_path = table_index_file(base_dir_.c_str(),name(),indexes_[i]->index_meta().name());
+          if(remove(index_path.c_str())!=0){
+            LOG_ERROR("failed to remove index file %s", index_path.c_str());
+            rc = RC::GENERIC_ERROR;
+            return rc;
+          }
+        }
+        return rc;
+}
+
+RC Table:: create(
     const char *path, const char *name, const char *base_dir, int attribute_count, const AttrInfo attributes[])
 {
 
@@ -229,6 +264,7 @@ RC Table::insert_record(Trx *trx, Record *record)
     return rc;
   }
 
+  //这里是如果要引入事务，需要做一些也写入事务
   if (trx != nullptr) {
     rc = trx->insert_record(this, record);
     if (rc != RC::SUCCESS) {
